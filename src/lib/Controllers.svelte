@@ -171,32 +171,50 @@
   });
 </script>
 
-<!-- Controller models (with brand-matched glTF) -->
-<Controller left>
-  <Pointer color="red" />
-</Controller>
+<!-- Controllers: no children → brand-matched glTF model renders automatically.
+     Pointer goes in the grip snippet so it renders alongside the model. -->
+<Controller left />
 
 <Controller right>
-  <Pointer
-    color={rButtons[TRIGGER_BUTTON - 1] ? 0x6666ff : "blue"}
-    radius={rButtons[TRIGGER_BUTTON - 1] ? 0.01 : 0.005}
-    length={rButtons[TRIGGER_BUTTON - 1] ? 0.25 : 1}
-  />
+  {#snippet grip()}
+    <Pointer
+      color={rButtons[TRIGGER_BUTTON - 1] ? 0x6666ff : "blue"}
+      radius={rButtons[TRIGGER_BUTTON - 1] ? 0.01 : 0.005}
+      length={rButtons[TRIGGER_BUTTON - 1] ? 0.25 : 1}
+    />
+  {/snippet}
 </Controller>
 
-<!-- Hand tracking meshes, coloured by mode -->
+<!-- Hands: no children → full skeletal hand mesh renders automatically.
+     wrist snippet adds the mode-colour dot without hiding the mesh.
+     targetRay snippet on the right hand adds the aiming ray;
+     the targetRay space has -Z forward so we rotate 90° around X
+     to align the Pointer's -Y axis with -Z. -->
 <Hand left>
-  <T.Mesh>
-    <T.SphereGeometry args={[0.01, 8, 8]} />
-    <T.MeshBasicMaterial color={handColor} />
-  </T.Mesh>
+  {#snippet wrist()}
+    <T.Mesh>
+      <T.SphereGeometry args={[0.015, 8, 8]} />
+      <T.MeshBasicMaterial color={handColor} />
+    </T.Mesh>
+  {/snippet}
 </Hand>
 
 <Hand right>
-  <T.Mesh>
-    <T.SphereGeometry args={[0.01, 8, 8]} />
-    <T.MeshBasicMaterial color={handColor} />
-  </T.Mesh>
+  {#snippet wrist()}
+    <T.Mesh>
+      <T.SphereGeometry args={[0.015, 8, 8]} />
+      <T.MeshBasicMaterial color={handColor} />
+    </T.Mesh>
+  {/snippet}
+  {#snippet targetRay()}
+    <T.Group rotation={[Math.PI / 2, 0, 0]}>
+      <Pointer
+        color={rButtons[TRIGGER_BUTTON - 1] ? 0x6666ff : "blue"}
+        radius={rButtons[TRIGGER_BUTTON - 1] ? 0.01 : 0.005}
+        length={rButtons[TRIGGER_BUTTON - 1] ? 0.25 : 1}
+      />
+    </T.Group>
+  {/snippet}
 </Hand>
 
 <!-- Intersection point indicator -->
