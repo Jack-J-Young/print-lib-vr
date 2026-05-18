@@ -5,7 +5,7 @@
   import { Callback, CallbackType, interactStore } from "$lib/stores/interactStore";
   import type { HoldEvent } from "$lib/HoldEvent";
 
-  let { children, scale }: { children: any, scale?: number | [x: number, y: number, z: number] | undefined } = $props();
+  let { children, scale = 1 }: { children: any; scale?: number | [x: number, y: number, z: number] } = $props();
   
 
   let ref: THREE.Group = $state(new THREE.Group());

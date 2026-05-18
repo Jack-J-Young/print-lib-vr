@@ -5,18 +5,32 @@
     useController,
     Headset,
     type XRController,
-    useXR,
-    Hand,
   } from "@threlte/xr";
   import * as THREE from "three";
   import Controllers from "$lib/Controllers.svelte";
-  import TestPlane from "$lib/Keyboard.svelte";
   import Collision from "$lib/Collision.svelte";
-    import Keyboard from "$lib/Keyboard.svelte";
-    import Input from "$lib/Input.svelte";
-    import OriginMarker from "$lib/OriginMarker.svelte";
+  import Keyboard from "$lib/Keyboard.svelte";
+  import OriginMarker from "$lib/OriginMarker.svelte";
+  import GithubInput from "$lib/GithubInput.svelte";
+  import ModelViewer from "$lib/ModelViewer.svelte";
+  import { load3MFsFromRepo } from "$lib/services/githubService";
+  import { repoStore } from "$lib/stores/repoStore.svelte";
 
-  const { isHandTracking } = useXR();
+  async function handleSearch(text: string) {
+    const query = text.trim();
+    if (!query) return;
+    repoStore.loading = true;
+    repoStore.error = "";
+    repoStore.models = [];
+    try {
+      repoStore.models = await load3MFsFromRepo(query);
+    } catch (e) {
+      repoStore.error = e instanceof Error ? e.message : "Unknown error";
+      console.error(repoStore.error);
+    } finally {
+      repoStore.loading = false;
+    }
+  }
 
   let headset: THREE.Object3D = $state(new THREE.Object3D());
 
@@ -71,24 +85,11 @@
 
 <XR>
   <Headset>
-    <T.Object3D bind:ref={headset}>
-    <!-- TODO: Hand tracking / controller abstract / alternate mode -->
-      <!-- {#if isHandTracking}
-        <T.Object3D>
-          <Hand left></Hand>
-          <Hand right></Hand>
-        </T.Object3D>
-      {/if} -->
-    </T.Object3D>
+    <T.Object3D bind:ref={headset} />
   </Headset>
 
-  <T.PerspectiveCamera />
-  <Controllers
-    bind:left
-    bind:right
-  /><!-- intersectObjs={[test, test2].filter((obj) => obj!=undefined)} -->
+  <Controllers bind:left bind:right />
 
-  <!-- <Controllers bind:left bind:right intersectObjs={[test, test2].filter((obj) => obj!=undefined)}/> -->
   <T.Group bind:ref={worldRoot}>
     <T.AmbientLight color={0xd7681c} intensity={0.3} position={[0, 0, 0]} />
     <T.DirectionalLight
@@ -98,17 +99,16 @@
       rotation={[0, 0, 1]}
     />
 
-    <!-- {#if $keyboard}
-      <T is={$keyboard}></T>
-    {/if} -->
-    <OriginMarker></OriginMarker>
-    <!-- <Input /> -->
+    <!-- <grid -->
+
+    <OriginMarker />
+    <GithubInput onsearch={handleSearch} />
+    <ModelViewer />
     <Keyboard />
 
     <Collision>
       <T.Mesh visible={false}>
         <T.SphereGeometry args={[4, 16, 16]} />
-
         <T.MeshBasicMaterial
           color="clear"
           transparent
