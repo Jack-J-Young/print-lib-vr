@@ -4,9 +4,12 @@
   import { Controller, useController, useHand, useXR } from "@threlte/xr";
   import type { XRController } from "@threlte/xr";
   import * as THREE from "three";
-  import { RaycastEngine, TRIGGER_BUTTON, GRIP_BUTTON } from "$lib/RaycastEngine.svelte";
+  import { RaycastEngine } from "$lib/RaycastEngine.svelte";
   import HandControls from "$lib/HandControls.svelte";
-  import { thumbstick } from "$lib/stores/thumbstickStore";
+  import { grabTool } from "$lib/tools/GrabTool.svelte";
+  import { interactTool } from "$lib/tools/InteractTool.svelte";
+  import { toolStore } from "$lib/stores/toolStore.svelte";
+  import type { AuxInput } from "$lib/tools/Tool";
 
   let {
     left = $bindable(useController("left")),
@@ -21,11 +24,14 @@
   const rightHand = useHand("right");
 
   const engine = new RaycastEngine(scene);
-  let handMode: "interact" | "grab" = $state("interact");
 
-  const interactColor = 0x44ff44;
-  const grabColor = 0xff8800;
-  const handColor = $derived(handMode === "interact" ? interactColor : grabColor);
+  // Written by HandControls each frame, read here.
+  let handIsPressed: boolean = $state(false);
+  let handAux: AuxInput = $state({ x: 0, y: 0 });
+
+  const _rot = new THREE.Matrix4();
+  const _origin = new THREE.Vector3();
+  const _dir = new THREE.Vector3();
 
   useTask((delta) => {
     if ($isHandTracking) {
@@ -33,53 +39,62 @@
       if (!hand) return;
       hand.targetRay.matrixWorldNeedsUpdate = true;
       const m = hand.targetRay.matrixWorld;
-      const rotation = new THREE.Matrix4().extractRotation(m);
-      const origin = new THREE.Vector3().setFromMatrixPosition(m);
-      const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(rotation);
-      engine.cast(delta, origin, direction, m);
+      _rot.extractRotation(m);
+      _origin.setFromMatrixPosition(m);
+      _dir.set(0, 0, -1).applyMatrix4(_rot);
+      engine.cast(_origin, _dir);
+
+      toolStore.activeTool.update(delta, engine.hitId, handIsPressed, m, _dir, handAux, scene);
     } else {
       if (!$right) return;
       const gamepad = $right.inputSource.gamepad;
       if (!gamepad) return;
-      engine.updateFromGamepad(gamepad);
-      const axes = gamepad.axes;
-      thumbstick.x = axes.length > 3 ? axes[2] : (axes[0] ?? 0);
-      thumbstick.y = axes.length > 3 ? axes[3] : (axes[1] ?? 0);
+
       const grip = $right.grip;
       if (!grip) return;
       grip.matrixWorldNeedsUpdate = true;
       const m = grip.matrixWorld;
-      const rotation = new THREE.Matrix4().extractRotation(m);
-      const origin = new THREE.Vector3().setFromMatrixPosition(m);
-      const direction = new THREE.Vector3(0, -1, 0).applyMatrix4(rotation);
-      engine.cast(delta, origin, direction, m);
+      _rot.extractRotation(m);
+      _origin.setFromMatrixPosition(m);
+      _dir.set(0, -1, 0).applyMatrix4(_rot);
+      engine.cast(_origin, _dir);
+
+      const axes = gamepad.axes;
+      const aux: AuxInput = {
+        x: axes.length > 3 ? axes[2] : (axes[0] ?? 0),
+        y: axes.length > 3 ? axes[3] : (axes[1] ?? 0),
+      };
+
+      const triggerPressed = gamepad.buttons[0]?.pressed ?? false;
+      const gripPressed    = gamepad.buttons[1]?.pressed ?? false;
+
+      interactTool.update(delta, engine.hitId, triggerPressed, m, _dir, aux, scene);
+      grabTool.update(delta, engine.hitId, gripPressed, m, _dir, aux, scene);
     }
   });
 </script>
 
-<!-- Left controller: brand-matched model only (no interaction ray needed). -->
 <Controller left />
 
-<!-- Right controller: brand-matched model + aiming ray in the grip space. -->
 <Controller right>
   {#snippet grip()}
-    {@const pressed = engine.rButtons[TRIGGER_BUTTON - 1] || engine.rButtons[GRIP_BUTTON - 1]}
+    {@const activated = grabTool.isActive || interactTool.isActive}
+    {@const beamColor = grabTool.isActive ? grabTool.color : interactTool.isHovering ? interactTool.color : 0x4444aa}
     <Pointer
-      color={pressed ? 0x6666ff : "blue"}
-      radius={pressed ? 0.01 : 0.005}
-      length={pressed ? 0.25 : 1}
+      color={beamColor}
+      radius={activated ? 0.01 : 0.005}
+      length={activated ? 0.25 : 1}
     />
   {/snippet}
 </Controller>
 
-<!-- Hand visuals and pinch input. -->
-<HandControls {engine} bind:handMode {handColor} />
+<HandControls bind:handIsPressed bind:handAux {engine} />
 
-<!-- World-space intersection point indicator. -->
-{#if engine.rPoint}
-  {@const pressed = engine.rButtons[TRIGGER_BUTTON - 1] || engine.rButtons[GRIP_BUTTON - 1]}
-  <T.Mesh position={engine.rPoint.toArray()}>
-    <T.SphereGeometry args={pressed ? [0.01, 2, 2] : [0.01, 8, 8]} />
-    <T.MeshStandardMaterial color={pressed ? 0x6666ff : "blue"} />
+{#if engine.hitPoint}
+  {@const activated = $isHandTracking ? handIsPressed : grabTool.isActive || interactTool.isActive}
+  {@const idleColor = $isHandTracking ? toolStore.color : grabTool.isActive ? grabTool.color : interactTool.isHovering ? interactTool.color : 0x4444aa}
+  <T.Mesh position={engine.hitPoint.toArray()}>
+    <T.SphereGeometry args={[0.01, 8, 8]} />
+    <T.MeshStandardMaterial color={activated ? 0xffffff : idleColor} />
   </T.Mesh>
 {/if}

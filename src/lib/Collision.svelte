@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { T } from "@threlte/core";
   import * as THREE from "three";
-  import { interactStore } from "$lib/stores/interactStore";
+  import { registry } from "$lib/stores/registryStore.svelte";
 
   let { children } = $props();
 
@@ -10,7 +10,9 @@
 
   onMount(() => {
     if (!ref) return;
-    $interactStore.hitboxIds?.push(ref.id);
+    registry.registerHitbox(ref.id);
+    const id = ref.id;
+    return () => registry.unregister(id);
   });
 </script>
 
