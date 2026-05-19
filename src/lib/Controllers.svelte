@@ -6,6 +6,7 @@
   import * as THREE from "three";
   import { RaycastEngine, TRIGGER_BUTTON, GRIP_BUTTON } from "$lib/RaycastEngine.svelte";
   import HandControls from "$lib/HandControls.svelte";
+  import { thumbstick } from "$lib/stores/thumbstickStore";
 
   let {
     left = $bindable(useController("left")),
@@ -41,6 +42,9 @@
       const gamepad = $right.inputSource.gamepad;
       if (!gamepad) return;
       engine.updateFromGamepad(gamepad);
+      const axes = gamepad.axes;
+      thumbstick.x = axes.length > 3 ? axes[2] : (axes[0] ?? 0);
+      thumbstick.y = axes.length > 3 ? axes[3] : (axes[1] ?? 0);
       const grip = $right.grip;
       if (!grip) return;
       grip.matrixWorldNeedsUpdate = true;
