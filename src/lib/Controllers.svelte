@@ -5,6 +5,7 @@
     CallbackType,
     interactStore,
   } from "$lib/stores/interactStore";
+  import { thumbstick } from "$lib/stores/thumbstickStore";
   import { T, useTask, useThrelte, type CurrentReadable } from "@threlte/core";
   import { Controller, Hand, useController, useXR } from "@threlte/xr";
   import type { XRController } from "@threlte/xr";
@@ -93,11 +94,6 @@
     }
   }
 
-  // Colours
-const interactColor = 0x44ff44;
-const grabColor = 0xff8800;
-const handColor = $derived(handMode === 'interact' ? interactColor : grabColor);
-
   useTask((delta) => {
     // --- Hand tracking: left pinch toggles mode ---
     if ($isHandTracking && $left) {
@@ -118,6 +114,14 @@ const handColor = $derived(handMode === 'interact' ? interactColor : grabColor);
 
     let buttons = gamepad.buttons;
     rButtons = Array(buttons.length).fill(false);
+
+    // Quest/Chrome reports 4 axes: [0][1] = touchpad (always 0), [2][3] = thumbstick.
+    // Fallback to [0][1] for runtimes that only report 2 axes.
+    const axes = gamepad.axes;
+    const tx = axes.length > 3 ? axes[2] : (axes[0] ?? 0);
+    const ty = axes.length > 3 ? axes[3] : (axes[1] ?? 0);
+    thumbstick.x = tx;
+    thumbstick.y = ty;
 
     if ($isHandTracking) {
       // In hand tracking mode, synthesise the active button based on handMode
@@ -175,11 +179,12 @@ const handColor = $derived(handMode === 'interact' ? interactColor : grabColor);
   });
 </script>
 
-<!-- Controller models (with brand-matched glTF) -->
+<!-- Left controller — pointer ray only, matching original style -->
 <Controller left>
   <Pointer color="red" />
 </Controller>
 
+<!-- Right controller — pointer ray only, matching original style -->
 <Controller right>
   <Pointer
     color={rButtons[1] ? 0x6666ff : "blue"}
@@ -188,20 +193,9 @@ const handColor = $derived(handMode === 'interact' ? interactColor : grabColor);
   />
 </Controller>
 
-<!-- Hand tracking meshes, coloured by mode -->
-<Hand left>
-  <T.Mesh>
-    <T.SphereGeometry args={[0.01, 8, 8]} />
-    <T.MeshBasicMaterial color={handColor} />
-  </T.Mesh>
-</Hand>
-
-<Hand right>
-  <T.Mesh>
-    <T.SphereGeometry args={[0.01, 8, 8]} />
-    <T.MeshBasicMaterial color={handColor} />
-  </T.Mesh>
-</Hand>
+<!-- Hand tracking meshes — no children so the default hand model renders -->
+<Hand left />
+<Hand right />
 
 <!-- Intersection point indicator -->
 {#if rPoint}

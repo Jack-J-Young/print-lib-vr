@@ -5,20 +5,21 @@
   import { Callback, CallbackType, interactStore } from "$lib/stores/interactStore";
     // import type { HoldEvent } from "$lib/HoldEvent";
 
-  let { children } = $props();
+  let { children, onpress }: { children: any; onpress?: () => void } = $props();
 
   let ref: THREE.Group = $state(new THREE.Group());
 
   let rootPos: THREE.Vector3 = new THREE.Vector3();
   let hoverPos: THREE.Vector3 = new THREE.Vector3();
   let clickPos: THREE.Vector3 = new THREE.Vector3();
-  
+
   function hoverTick(delta?: number, matrix?: THREE.Matrix4): void {
     ref.position.copy(hoverPos);
   }
 
   function clickStart(delta?: number, matrix?: THREE.Matrix4): void {
     ref.position.copy(clickPos);
+    onpress?.();
   }
 
   function clickEnd(delta?: number, matrix?: THREE.Matrix4): void {

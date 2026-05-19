@@ -3,6 +3,21 @@
   import * as THREE from "three";
   import Grabbable from "$lib/Grabbable.svelte";
   import Button from "$lib/Button.svelte";
+  import { textStore } from "$lib/stores/textStore";
+
+  const IGNORE = new Set(['Shift', 'Caps', 'Ctrl', 'Win', 'Alt', 'AltGr', 'Fn', 'Menu', 'Tab']);
+  let shiftActive = $state(false);
+
+  function handleKey(letter: string) {
+    if (letter === '⌫') { textStore.update(t => t.slice(0, -1)); return; }
+    if (letter === 'Space') { textStore.update(t => t + ' '); return; }
+    if (letter === 'Enter') { textStore.update(t => t + '\n'); return; }
+    if (letter === 'Shift') { shiftActive = !shiftActive; return; }
+    if (IGNORE.has(letter)) return;
+    const char = shiftActive ? letter.toUpperCase() : letter;
+    textStore.update(t => t + char);
+    shiftActive = false;
+  }
 
   function makeLetterTexture(letter: string, size: number
   ) {
@@ -123,7 +138,7 @@
     </T.Mesh>
     {#each rowData as row}
       {#each row.letters as letter, i}
-        <Button>
+        <Button onpress={() => handleKey(letter)}>
           <T.Mesh
             position={[row.positions[i] * 0.3, row.y, -0.9]}
             scale={[row.sizes[i] * 0.5, 0.5, 0.5]}

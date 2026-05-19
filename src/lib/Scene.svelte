@@ -10,11 +10,11 @@
   } from "@threlte/xr";
   import * as THREE from "three";
   import Controllers from "$lib/Controllers.svelte";
-  import TestPlane from "$lib/Keyboard.svelte";
   import Collision from "$lib/Collision.svelte";
-    import Keyboard from "$lib/Keyboard.svelte";
-    import Input from "$lib/Input.svelte";
-    import OriginMarker from "$lib/OriginMarker.svelte";
+  import Keyboard from "$lib/Keyboard.svelte";
+  import GithubInput from "$lib/GithubInput.svelte";
+  import MarkdownPanel from "$lib/MarkdownPanel.svelte";
+  import OriginMarker from "$lib/OriginMarker.svelte";
 
   const { isHandTracking } = useXR();
 
@@ -66,19 +66,19 @@
   let right: CurrentReadable<XRController | undefined> = $state(
     useController("right"),
   );
-  // let test2: THREE.Mesh | undefined = $state();
+
+  // README source URL — set when the user submits a GitHub search
+  let readmeSrc: string | undefined = $state(undefined);
+
+  function onSearch(repo: string) {
+    // GitHub API returns raw README regardless of default branch
+    readmeSrc = `https://api.github.com/repos/${repo}/readme`;
+  }
 </script>
 
 <XR>
   <Headset>
     <T.Object3D bind:ref={headset}>
-    <!-- TODO: Hand tracking / controller abstract / alternate mode -->
-      <!-- {#if isHandTracking}
-        <T.Object3D>
-          <Hand left></Hand>
-          <Hand right></Hand>
-        </T.Object3D>
-      {/if} -->
     </T.Object3D>
   </Headset>
 
@@ -86,7 +86,7 @@
   <Controllers
     bind:left
     bind:right
-  /><!-- intersectObjs={[test, test2].filter((obj) => obj!=undefined)} -->
+  />
 
   <!-- <Controllers bind:left bind:right intersectObjs={[test, test2].filter((obj) => obj!=undefined)}/> -->
   <T.Group bind:ref={worldRoot}>
@@ -98,11 +98,18 @@
       rotation={[0, 0, 1]}
     />
 
-    <!-- {#if $keyboard}
-      <T is={$keyboard}></T>
-    {/if} -->
     <OriginMarker></OriginMarker>
-    <!-- <Input /> -->
+
+    <!-- Search bar: sits 1 m in front, slightly above eye level -->
+    <T.Group position={[0, 0.3, -1]}>
+      <GithubInput onsearch={onSearch} />
+    </T.Group>
+
+    <!-- README panel: appears to the right of the search bar after a search -->
+    {#if readmeSrc}
+      <MarkdownPanel src={readmeSrc} position={[1.3, 0.5, -1.8]} />
+    {/if}
+
     <Keyboard />
 
     <Collision>
