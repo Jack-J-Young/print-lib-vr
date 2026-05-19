@@ -6,7 +6,6 @@
     Headset,
     type XRController,
     useXR,
-    Hand,
   } from "@threlte/xr";
   import * as THREE from "three";
   import Controllers from "$lib/Controllers.svelte";
@@ -14,18 +13,19 @@
   import Keyboard from "$lib/Keyboard.svelte";
   import GithubInput from "$lib/GithubInput.svelte";
   import MarkdownPanel from "$lib/MarkdownPanel.svelte";
+  import ModelViewer from "$lib/ModelViewer.svelte";
   import OriginMarker from "$lib/OriginMarker.svelte";
+  import { load3MFsFromRepo } from "$lib/services/githubService";
+  import { repoStore } from "$lib/stores/repoStore.svelte";
 
   const { isHandTracking } = useXR();
 
   let headset: THREE.Object3D = $state(new THREE.Object3D());
-
   let worldRoot: THREE.Group = $state(new THREE.Group());
 
   function recenter(head: THREE.Object3D) {
     if (!worldRoot) return;
 
-    // decompose into position + rotation
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
     const scale = new THREE.Vector3();
@@ -44,51 +44,51 @@
   useTask(() => {
     if (!init) {
       recenter(headset);
-
       init = true;
     }
     const gamepad = $right?.inputSource?.gamepad;
-
     if (!gamepad) return;
-
     const pressed = gamepad.buttons[3]?.pressed;
-    // button[0] = primary trigger (most devices)
-
     if (pressed && worldRoot && headset) {
       recenter(headset);
-      // $left = $right;
     }
   });
 
-  let left: CurrentReadable<XRController | undefined> = $state(
-    useController("left"),
-  );
-  let right: CurrentReadable<XRController | undefined> = $state(
-    useController("right"),
-  );
+  let left: CurrentReadable<XRController | undefined> = $state(useController("left"));
+  let right: CurrentReadable<XRController | undefined> = $state(useController("right"));
 
-  // README source URL — set when the user submits a GitHub search
   let readmeSrc: string | undefined = $state(undefined);
 
-  function onSearch(repo: string) {
-    // GitHub API returns raw README regardless of default branch
-    readmeSrc = `https://api.github.com/repos/${repo}/readme`;
+  async function onSearch(repo: string) {
+    const query = repo.trim();
+    if (!query) return;
+
+    // Load README as markdown
+    readmeSrc = `https://api.github.com/repos/${query}/readme`;
+
+    // Load 3MF models
+    repoStore.loading = true;
+    repoStore.error = "";
+    repoStore.models = [];
+    try {
+      repoStore.models = await load3MFsFromRepo(query);
+    } catch (e) {
+      repoStore.error = e instanceof Error ? e.message : "Unknown error";
+      console.error(repoStore.error);
+    } finally {
+      repoStore.loading = false;
+    }
   }
 </script>
 
 <XR>
   <Headset>
-    <T.Object3D bind:ref={headset}>
-    </T.Object3D>
+    <T.Object3D bind:ref={headset} />
   </Headset>
 
   <T.PerspectiveCamera />
-  <Controllers
-    bind:left
-    bind:right
-  />
+  <Controllers bind:left bind:right />
 
-  <!-- <Controllers bind:left bind:right intersectObjs={[test, test2].filter((obj) => obj!=undefined)}/> -->
   <T.Group bind:ref={worldRoot}>
     <T.AmbientLight color={0xd7681c} intensity={0.3} position={[0, 0, 0]} />
     <T.DirectionalLight
@@ -98,24 +98,22 @@
       rotation={[0, 0, 1]}
     />
 
-    <OriginMarker></OriginMarker>
+    <OriginMarker />
 
-    <!-- Search bar: sits 1 m in front, slightly above eye level -->
     <T.Group position={[0, 0.3, -1]}>
       <GithubInput onsearch={onSearch} />
     </T.Group>
 
-    <!-- README panel: appears to the right of the search bar after a search -->
     {#if readmeSrc}
       <MarkdownPanel src={readmeSrc} position={[1.3, 0.5, -1.8]} />
     {/if}
 
+    <ModelViewer />
     <Keyboard />
 
     <Collision>
       <T.Mesh visible={false}>
         <T.SphereGeometry args={[4, 16, 16]} />
-
         <T.MeshBasicMaterial
           color="clear"
           transparent
