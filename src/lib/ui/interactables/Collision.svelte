@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { T } from "@threlte/core";
   import * as THREE from "three";
-  import { registry } from "$lib/stores/registryStore.svelte";
+  import { registry } from "$lib/ui/interactables/stores/registryStore.svelte";
 
   let { children } = $props();
 

@@ -1,6 +1,6 @@
-import { grabTool } from "$lib/tools/GrabTool.svelte";
-import { interactTool } from "$lib/tools/InteractTool.svelte";
-import type { Tool } from "$lib/tools/Tool";
+import { grabTool } from "$lib/ui/input/tools/GrabTool.svelte";
+import { interactTool } from "$lib/ui/input/tools/InteractTool.svelte";
+import type { Tool } from "$lib/ui/input/tools/Tool";
 
 class ToolStore {
   private readonly tools: Tool[] = [interactTool, grabTool];

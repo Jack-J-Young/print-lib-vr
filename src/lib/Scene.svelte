@@ -8,13 +8,13 @@
     useXR,
   } from "@threlte/xr";
   import * as THREE from "three";
-  import Controllers from "$lib/Controllers.svelte";
-  import Collision from "$lib/Collision.svelte";
-  import Keyboard from "$lib/Keyboard.svelte";
-  import GithubInput from "$lib/GithubInput.svelte";
-  import MarkdownPanel from "$lib/MarkdownPanel.svelte";
-  import ModelViewer from "$lib/ModelViewer.svelte";
-  import OriginMarker from "$lib/OriginMarker.svelte";
+  import Controllers from "$lib/ui/input/Controllers.svelte";
+  import Collision from "$lib/ui/interactables/Collision.svelte";
+  import Keyboard from "$lib/components/Keyboard.svelte";
+  import GithubInput from "$lib/components/GithubInput.svelte";
+  import MarkdownPanel from "$lib/components/MarkdownPanel.svelte";
+  import ModelViewer from "$lib/components/ModelViewer.svelte";
+  import OriginMarker from "$lib/models/OriginMarker.svelte";
   import { load3MFsFromRepo } from "$lib/services/githubService";
   import { repoStore } from "$lib/stores/repoStore.svelte";
 

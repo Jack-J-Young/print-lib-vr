@@ -1,8 +1,8 @@
 <script lang="ts">
   import { T } from "@threlte/core";
   import * as THREE from "three";
-  import Grabbable from "$lib/Grabbable.svelte";
-  import Button from "$lib/Button.svelte";
+  import Grabbable from "$lib/ui/interactables/Grabbable.svelte";
+  import Button from "$lib/ui/interactables/Button.svelte";
   import { textStore } from "$lib/stores/textStore";
 
   const IGNORE = new Set(['Shift', 'Caps', 'Ctrl', 'Win', 'Alt', 'AltGr', 'Fn', 'Menu', 'Tab']);

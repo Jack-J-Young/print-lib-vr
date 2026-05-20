@@ -1,8 +1,9 @@
 import type * as THREE from "three";
 
 export interface AuxInput {
-  x: number; // -1..1  rotate axis (grab) / horizontal
-  y: number; // -1..1  push/pull axis (grab) / vertical
+  x: number;        // -1..1  rotate axis (grab) / horizontal (controller joystick)
+  y: number;        // -1..1  push/pull axis (grab) / vertical
+  rotDelta?: number; // direct rotation increment in radians (hand mode — bypasses velocity scaling)
 }
 
 export interface Tool {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { T } from "@threlte/core";
-  import Grabbable from "$lib/Grabbable.svelte";
+  import Grabbable from "$lib/ui/interactables/Grabbable.svelte";
   import { repoStore } from "$lib/stores/repoStore.svelte";
 </script>
 

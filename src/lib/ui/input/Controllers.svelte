@@ -1,15 +1,15 @@
 <script lang="ts">
-  import Pointer from "$lib/Pointer.svelte";
+  import Pointer from "$lib/models/Pointer.svelte";
   import { T, useTask, useThrelte, type CurrentReadable } from "@threlte/core";
   import { Controller, useController, useHand, useXR } from "@threlte/xr";
   import type { XRController } from "@threlte/xr";
   import * as THREE from "three";
-  import { RaycastEngine } from "$lib/RaycastEngine.svelte";
-  import HandControls from "$lib/HandControls.svelte";
-  import { grabTool } from "$lib/tools/GrabTool.svelte";
-  import { interactTool } from "$lib/tools/InteractTool.svelte";
-  import { toolStore } from "$lib/stores/toolStore.svelte";
-  import type { AuxInput } from "$lib/tools/Tool";
+  import { RaycastEngine } from "$lib/ui/input/RaycastEngine.svelte";
+  import Hands from "$lib/ui/input/Hands.svelte";
+  import { grabTool } from "$lib/ui/input/tools/GrabTool.svelte";
+  import { interactTool } from "$lib/ui/input/tools/InteractTool.svelte";
+  import { toolStore } from "$lib/ui/input/stores/toolStore.svelte";
+  import type { AuxInput } from "$lib/ui/input/tools/Tool";
 
   let {
     left = $bindable(useController("left")),
@@ -88,7 +88,7 @@
   {/snippet}
 </Controller>
 
-<HandControls bind:handIsPressed bind:handAux {engine} />
+<Hands bind:handIsPressed bind:handAux {engine} />
 
 {#if engine.hitPoint}
   {@const activated = $isHandTracking ? handIsPressed : grabTool.isActive || interactTool.isActive}

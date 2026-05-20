@@ -1,5 +1,5 @@
 import type { Tool, AuxInput } from "./Tool";
-import { registry } from "$lib/stores/registryStore.svelte";
+import { registry } from "$lib/ui/interactables/stores/registryStore.svelte";
 import type * as THREE from "three";
 
 class InteractTool implements Tool {

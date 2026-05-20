@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { registry } from "$lib/stores/registryStore.svelte";
+import { registry } from "$lib/ui/interactables/stores/registryStore.svelte";
 
 export class RaycastEngine {
   hitId: number | undefined = $state(undefined);

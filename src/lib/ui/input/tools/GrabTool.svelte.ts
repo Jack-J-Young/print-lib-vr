@@ -1,5 +1,5 @@
 import type { Tool, AuxInput } from "./Tool";
-import { registry } from "$lib/stores/registryStore.svelte";
+import { registry } from "$lib/ui/interactables/stores/registryStore.svelte";
 import * as THREE from "three";
 
 const PUSH_SPEED = 1.0;
@@ -88,8 +88,8 @@ class GrabTool implements Tool {
       this._objPos.setFromMatrixPosition(this._objMat);
     }
 
-    if (Math.abs(sx) > DEADZONE) {
-      const angle = sx * ROT_SPEED * delta;
+    if (aux.rotDelta !== undefined ? Math.abs(aux.rotDelta) > 0.0001 : Math.abs(sx) > DEADZONE) {
+      const angle = aux.rotDelta !== undefined ? aux.rotDelta : sx * ROT_SPEED * delta;
       this._toObj.subVectors(this._objPos, this._ctrlPos);
       const depth = this._toObj.dot(rayDir);
       this._newLocal.copy(this._ctrlPos).addScaledVector(rayDir, depth);
