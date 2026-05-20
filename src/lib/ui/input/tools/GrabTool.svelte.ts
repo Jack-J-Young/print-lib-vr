@@ -72,15 +72,18 @@ class GrabTool implements Tool {
 
   private adjustOffset(delta: number, matrix: THREE.Matrix4, rayDir: THREE.Vector3, aux: AuxInput): void {
     const { x: sx, y: sy } = aux;
-    if (Math.abs(sy) <= DEADZONE && Math.abs(sx) <= DEADZONE) return;
+    const hasHandInput = (aux.moveDelta !== undefined && Math.abs(aux.moveDelta) > 0.0001)
+                      || (aux.rotDelta  !== undefined && Math.abs(aux.rotDelta)  > 0.0001);
+    if (!hasHandInput && Math.abs(sy) <= DEADZONE && Math.abs(sx) <= DEADZONE) return;
 
     this._ctrlPos.setFromMatrixPosition(matrix);
     this._ctrlInv.copy(matrix).invert();
     this._objMat.multiplyMatrices(matrix, this.offset);
     this._objPos.setFromMatrixPosition(this._objMat);
 
-    if (Math.abs(sy) > DEADZONE) {
-      const moveDelta = -sy * PUSH_SPEED * delta;
+    const pushActive = aux.moveDelta !== undefined ? Math.abs(aux.moveDelta) > 0.0001 : Math.abs(sy) > DEADZONE;
+    if (pushActive) {
+      const moveDelta = aux.moveDelta !== undefined ? aux.moveDelta : -sy * PUSH_SPEED * delta;
       this._newLocal.copy(this._objPos).addScaledVector(rayDir, moveDelta);
       this._newLocal.applyMatrix4(this._ctrlInv);
       this.offset.setPosition(this._newLocal);

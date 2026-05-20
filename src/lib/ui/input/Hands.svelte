@@ -53,7 +53,7 @@
     recolorModel(rightHandStore.current?.model, color);
   });
 
-  let leftPinching     = false;
+  let leftPinching     = $state(false);
   let prevBothPinching = false;
 
   // Origin marker — position + orientation frozen at pinch start
@@ -63,29 +63,36 @@
   const _originQuat = new THREE.Quaternion();
 
   const PALM_CAM_DOT = 0.15;
-  const AUX_RANGE    = 0.15;
 
-  // Aux reference frame, established when left pinch starts
+  // Kept for origin marker Z axis and no-targetRay fallback
   const _auxAxisDir   = new THREE.Vector3();
   const _auxPerpCross = new THREE.Vector3();
-  const _auxPerpUp    = new THREE.Vector3();
-  const _arrowUp      = new THREE.Vector3(0, 1, 0);
-  let   _auxInitDist  = 0;
-  let   _prevPerpX    = 0;
-  let   _prevPerpY    = 0;
+
+  // Right-hand ray frame joystick state
+  const _pinchDisp  = new THREE.Vector3(); // reusable temp
+  const _perpAxisY  = new THREE.Vector3(); // axisX × perpDir each frame
+  let   _axialPrev  = 0;    // previous frame axial projection for moveDelta
+  let   _prevPerpXR = 0;    // previous frame perp coords for rotDelta
+  let   _prevPerpYR = 0;
 
   const _wristPos   = new THREE.Vector3();
   const _rightPos   = new THREE.Vector3();
   const _toLeft     = new THREE.Vector3();
 
   // Origin marker axis computation
-  const _rightTipPos   = new THREE.Vector3();
   const _axisX         = new THREE.Vector3();
   const _axisY         = new THREE.Vector3();
   const _axisZ         = new THREE.Vector3();
+  const _rotMat        = new THREE.Matrix4();
 
   // Frozen reference frame passed to PinchJoystickOverlay
   const _frozenOrigin  = new THREE.Vector3();
+  // Live right-hand targetRay origin — updated every frame, passed by reference
+  const _rayOrigin     = new THREE.Vector3();
+  // perpDir in right hand's local frame (frozen at pinch start, re-rotated each frame)
+  const _perpDirLocal  = new THREE.Vector3();
+  const _perpDir       = new THREE.Vector3(); // world-space, updated each frame
+  const _invRot        = new THREE.Matrix4(); // scratch for inverse rotation
   const _pinchPoint    = new THREE.Vector3();
   const _thumbTipPos   = new THREE.Vector3();
 
@@ -140,72 +147,86 @@
       if (len > 0.001) {
         const arrowDir = _toLeft.clone().divideScalar(len);
 
-        if (!prevBothPinching) {
-          // 1. Establish the joystick reference frame from right→left wrist axis.
-          _auxAxisDir.copy(arrowDir);
-          _auxInitDist = len;
-          _auxPerpCross.crossVectors(_auxAxisDir, _arrowUp);
-          if (_auxPerpCross.length() < 0.01) {
-            _auxPerpCross.crossVectors(_auxAxisDir, new THREE.Vector3(0, 0, -1));
-          }
-          _auxPerpCross.normalize();
-          _auxPerpUp.crossVectors(_auxPerpCross, _auxAxisDir).normalize();
-          _prevPerpX = _toLeft.dot(_auxPerpCross);
-          _prevPerpY = _toLeft.dot(_auxPerpUp);
+        // Get right hand targetRay every frame (needed for both init and live axis).
+        const rightHand = rightHandStore.current;
+        const rightRay  = rightHand?.targetRay;
+        if (rightRay) {
+          rightRay.updateWorldMatrix(true, false);
+          _rotMat.extractRotation(rightRay.matrixWorld);
+          _axisX.set(0, 0, -1).applyMatrix4(_rotMat);                // pointer direction
+          _rayOrigin.setFromMatrixPosition(rightRay.matrixWorld);     // pointer origin
+          _perpDir.copy(_perpDirLocal).applyMatrix4(_rotMat);         // rotate frozen offset with hand
+        } else {
+          _axisX.copy(_auxPerpCross);
+          rightWrist.getWorldPosition(_rayOrigin);
+          // _perpDir unchanged when no targetRay
+        }
 
-          // 2. Build OriginMarker orientation:
-          //    Z (blue)  → _auxAxisDir  (right wrist → left wrist)
-          //    X (red)   → right hand pointer direction, made perpendicular to Z
-          //    Y (green) → cross(Z, X)  (perpendicular to the wrist line)
+        if (!prevBothPinching) {
+          // 1. Freeze Z axis (right→left wrist) for origin marker orientation.
+          _auxAxisDir.copy(arrowDir);
           _axisZ.copy(_auxAxisDir);
 
-          const rightTip = rightIndexTipJoint.current;
-          if (rightTip) {
-            rightTip.updateWorldMatrix(true, false);
-            rightTip.getWorldPosition(_rightTipPos);
-            _axisX.subVectors(_rightTipPos, _rightPos).normalize();
-          } else {
-            // Fallback: use the joystick horizontal perp axis
-            _axisX.copy(_auxPerpCross);
-          }
-          // Project X perpendicular to Z so the basis is orthogonal
-          _axisX.addScaledVector(_axisZ, -_axisX.dot(_axisZ));
-          if (_axisX.length() < 0.001) {
-            _axisX.copy(_auxPerpCross); // degenerate: ray || wrist axis
-          } else {
-            _axisX.normalize();
-          }
-          _axisY.crossVectors(_axisZ, _axisX).normalize();
-
-          // 180° around X: negate Y and Z
-          _originQuat.setFromRotationMatrix(
-            new THREE.Matrix4().makeBasis(_axisX, _axisY.negate(), _axisZ.negate())
-          );
-          // Place origin marker at the pinch point (index-thumb midpoint), fallback to wrist
+          // 2. Freeze the perpendicular direction from the right ray to the initial pinch.
           const pinchKnown = getLeftPinchPoint(_pinchPoint);
-          const originPos  = pinchKnown ? _pinchPoint : _wristPos;
-          originX = originPos.x; originY = originPos.y; originZ = originPos.z;
-          originQx = _originQuat.x; originQy = _originQuat.y;
-          originQz = _originQuat.z; originQw = _originQuat.w;
-          _frozenOrigin.copy(originPos);
+          const pinchPos   = pinchKnown ? _pinchPoint : _wristPos;
+          _frozenOrigin.copy(pinchPos);
+          // perpDir = normalize( (pinchPos - rayOrigin) projected perp to axisX )
+          _perpDir.subVectors(pinchPos, _rayOrigin);
+          _perpDir.addScaledVector(_axisX, -_perpDir.dot(_axisX));
+          const perpLen = _perpDir.length();
+          if (perpLen > 0.001) {
+            _perpDir.divideScalar(perpLen);
+          } else {
+            // Pinch is on the ray — pick an arbitrary perpendicular
+            _perpDir.set(Math.abs(_axisX.x) < 0.9 ? 1 : 0, Math.abs(_axisX.x) >= 0.9 ? 1 : 0, 0);
+            _perpDir.addScaledVector(_axisX, -_perpDir.dot(_axisX)).normalize();
+          }
+          // Store perpDir in the right hand's local frame so it rotates with the hand.
+          _invRot.copy(_rotMat).transpose();
+          _perpDirLocal.copy(_perpDir).applyMatrix4(_invRot);
+
+          // 3. Initialize ray-frame joystick reference values.
+          _pinchDisp.subVectors(pinchPos, _rayOrigin);
+          _axialPrev = _pinchDisp.dot(_axisX);
+          _pinchDisp.addScaledVector(_axisX, -_axialPrev);
+          _perpAxisY.crossVectors(_axisX, _perpDir);
+          _prevPerpXR = _pinchDisp.dot(_perpDir);
+          _prevPerpYR = _pinchDisp.dot(_perpAxisY);
+
           showOrigin = true;
         }
 
-        const axial  = _toLeft.dot(_auxAxisDir) - _auxInitDist; // push/pull: movement along right→left arrow axis
-        const perpX  = _toLeft.dot(_auxPerpCross);
-        const perpY  = _toLeft.dot(_auxPerpUp);
+        _axisY.crossVectors(_axisZ, _axisX).normalize();
 
-        const crossZ     = _prevPerpX * perpY - _prevPerpY * perpX;
-        const dotVal     = _prevPerpX * perpX + _prevPerpY * perpY;
-        const angleDelta = Math.atan2(crossZ, dotVal); // rotation: circular movement of left hand around the arrow axis
-        _prevPerpX = perpX;
-        _prevPerpY = perpY;
+        // Update OriginMarker orientation each frame (180° around X: negate Y and Z)
+        _originQuat.setFromRotationMatrix(
+          new THREE.Matrix4().makeBasis(_axisX, _axisY.negate(), _axisZ.negate())
+        );
+        originX = _frozenOrigin.x; originY = _frozenOrigin.y; originZ = _frozenOrigin.z;
+        originQx = _originQuat.x; originQy = _originQuat.y;
+        originQz = _originQuat.z; originQw = _originQuat.w;
 
-        // TODO: wire up axes
-        // axial      → push/pull (y)
-        // angleDelta → roll around arrow axis (rotDelta)
-        void axial; void angleDelta;
-        handAux = { x: 0, y: 0 };
+        // Joystick: decompose current left pinch into ray-frame cylindrical coords.
+        const pinchKnownLive = getLeftPinchPoint(_pinchPoint);
+        if (pinchKnownLive) {
+          _pinchDisp.subVectors(_pinchPoint, _rayOrigin);
+          const axialCurrent = _pinchDisp.dot(_axisX);
+          _pinchDisp.addScaledVector(_axisX, -axialCurrent); // pure perp component
+          _perpAxisY.crossVectors(_axisX, _perpDir);
+          const perpXR  = _pinchDisp.dot(_perpDir);
+          const perpYR  = _pinchDisp.dot(_perpAxisY);
+          const crossZ  = _prevPerpXR * perpYR - _prevPerpYR * perpXR;
+          const dotValR = _prevPerpXR * perpXR + _prevPerpYR * perpYR;
+          const rotDelta  = Math.atan2(crossZ, dotValR);
+          const moveDelta = axialCurrent - _axialPrev;
+          _prevPerpXR = perpXR;
+          _prevPerpYR = perpYR;
+          _axialPrev  = axialCurrent;
+          handAux = { x: 0, y: 0, rotDelta, moveDelta };
+        } else {
+          handAux = { x: 0, y: 0 };
+        }
       }
     } else {
       handAux = { x: 0, y: 0 };
@@ -262,12 +283,15 @@
 </Hand>
 
 
+{#if handIsPressed && leftPinching}
   <PinchJoystickOverlay
     active={showOrigin}
     frozenOrigin={_frozenOrigin}
+    rayOrigin={_rayOrigin}
+    perpDir={_perpDir}
     axisX={_axisX}
     {originX} {originY} {originZ}
     {originQx} {originQy} {originQz} {originQw}
   />
-
+{/if}
 {/if}
