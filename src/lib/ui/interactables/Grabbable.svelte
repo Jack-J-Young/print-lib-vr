@@ -1,17 +1,13 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { T } from "@threlte/core";
   import * as THREE from "three";
-  import { registry } from "$lib/ui/interactables/stores/registryStore.svelte";
+  import { registerGrabbable } from "$lib/ui/interactables/useRegister";
 
   let { children, scale = 1 }: { children: any; scale?: number | [number, number, number] } = $props();
 
   let ref: THREE.Group = $state(new THREE.Group());
 
-  onMount(() => {
-    registry.registerGrabbable(ref.id);
-    return () => registry.unregister(ref.id);
-  });
+  registerGrabbable(() => ref.id);
 </script>
 
 <T.Group bind:ref {scale}>
