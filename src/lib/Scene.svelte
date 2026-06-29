@@ -8,8 +8,9 @@
   import GithubInput from "$lib/components/GithubInput.svelte";
   import MarkdownPanel from "$lib/components/MarkdownPanel.svelte";
   import ModelViewer from "$lib/components/ModelViewer.svelte";
+  import FileExplorer from "$lib/components/FileExplorer.svelte";
   import OriginMarker from "$lib/models/OriginMarker.svelte";
-  import { load3MFsFromRepo } from "$lib/services/githubService";
+  import { fetchRepoTree, load3MF, rawUrl, type DirEntry } from "$lib/services/githubService";
   import { repoStore } from "$lib/stores/repoStore.svelte";
   import { environment } from "$lib/stores/environment.svelte";
 
@@ -29,24 +30,44 @@
 
   let readmeSrc: string | undefined = $state(undefined);
 
+  // Search loads the repo's file tree into the explorer — nothing auto-loads.
   async function onSearch(repo: string) {
     const query = repo.trim();
     if (!query) return;
 
-    // Load README as markdown
-    readmeSrc = `https://api.github.com/repos/${query}/readme`;
-
-    // Load 3MF models
     repoStore.loading = true;
     repoStore.error = "";
     repoStore.models = [];
+    readmeSrc = undefined;
     try {
-      repoStore.models = await load3MFsFromRepo(query);
+      repoStore.tree = await fetchRepoTree(query);
     } catch (e) {
       repoStore.error = e instanceof Error ? e.message : "Unknown error";
+      repoStore.tree = null;
       console.error(repoStore.error);
     } finally {
       repoStore.loading = false;
+    }
+  }
+
+  // A file the user picked in the explorer: load 3MF models, open markdown.
+  async function openFile(entry: DirEntry) {
+    const tree = repoStore.tree;
+    if (!tree) return;
+    const url = rawUrl(tree, entry.path);
+    const name = entry.name.toLowerCase();
+
+    if (name.endsWith(".md")) {
+      readmeSrc = url;
+    } else if (name.endsWith(".3mf")) {
+      try {
+        const model = await load3MF(url);
+        model.position.set((repoStore.models.length % 5) * 0.4 - 0.8, 1, -1.5);
+        repoStore.models = [...repoStore.models, model];
+      } catch (e) {
+        repoStore.error = e instanceof Error ? e.message : "Unknown error";
+        console.error(repoStore.error);
+      }
     }
   }
 </script>
@@ -74,8 +95,12 @@
       <GithubInput onsearch={onSearch} />
     </T.Group>
 
+    {#if repoStore.tree}
+      <FileExplorer tree={repoStore.tree} onfile={openFile} position={[-1.3, 0.6, -1.8]} />
+    {/if}
+
     {#if readmeSrc}
-      <MarkdownPanel src={readmeSrc} position={[1.3, 0.5, -1.8]} />
+      <MarkdownPanel src={readmeSrc} position={[1.3, 0.6, -1.8]} />
     {/if}
 
     <ModelViewer />
