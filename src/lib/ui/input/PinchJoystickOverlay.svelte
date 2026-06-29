@@ -1,47 +1,31 @@
 <script lang="ts">
-  import OriginMarker from "$lib/ui/input/OriginMarker.svelte";
   import StraightArrow from "$lib/models/StraightArrow.svelte";
   import CurvedArrow from "$lib/models/CurvedArrow.svelte";
-  import { T, useTask } from "@threlte/core";
+  import { useTask } from "@threlte/core";
   import { useHandJoint } from "@threlte/xr";
+  import { pinchMetrics } from "$lib/ui/input/hands/handJoints";
   import * as THREE from "three";
 
   let {
     active,
-    frozenOrigin,
     rayOrigin,   // live right-hand targetRay world position
     perpDir,     // frozen unit vector: perp from ray to initial left pinch
     axisX,       // live right-hand targetRay direction
-    originX, originY, originZ,
-    originQx, originQy, originQz, originQw,
   }: {
-    active:       boolean;
-    frozenOrigin: THREE.Vector3;
-    rayOrigin:    THREE.Vector3;
-    perpDir:      THREE.Vector3;
-    axisX:        THREE.Vector3;
-    originX: number; originY: number; originZ: number;
-    originQx: number; originQy: number; originQz: number; originQw: number;
+    active:    boolean;
+    rayOrigin: THREE.Vector3;
+    perpDir:   THREE.Vector3;
+    axisX:     THREE.Vector3;
   } = $props();
 
   const leftIndexTipJoint = useHandJoint('left', 'index-finger-tip');
   const leftThumbTipJoint = useHandJoint('left', 'thumb-tip');
 
-  const _pinchPoint  = new THREE.Vector3();
-  const _thumbTipPos = new THREE.Vector3();
-  const _dispVec     = new THREE.Vector3();
+  const _pinchPoint = new THREE.Vector3();
+  const _dispVec    = new THREE.Vector3();
 
-  function getLeftPinchPoint(out: THREE.Vector3): boolean {
-    const indexTip = leftIndexTipJoint.current;
-    const thumbTip = leftThumbTipJoint.current;
-    if (!indexTip || !thumbTip) return false;
-    indexTip.updateWorldMatrix(true, false);
-    thumbTip.updateWorldMatrix(true, false);
-    indexTip.getWorldPosition(out);
-    thumbTip.getWorldPosition(_thumbTipPos);
-    out.addVectors(out, _thumbTipPos).multiplyScalar(0.5);
-    return true;
-  }
+  const getLeftPinchPoint = (out: THREE.Vector3): boolean =>
+    pinchMetrics(leftIndexTipJoint.current, leftThumbTipJoint.current, out).ok;
 
   // Passed by reference to arrow components — mutated each frame
   const _lineFrom  = new THREE.Vector3();
@@ -91,9 +75,6 @@
 </script>
 
 {#if active}
-  <!-- <T.Group position={[originX, originY, originZ]} quaternion={[originQx, originQy, originQz, originQw]}>
-    <OriginMarker />
-  </T.Group> -->
   <StraightArrow from={rayOrigin} to={_lineFrom} color={0x000000} visible={lineVisible} />
   <StraightArrow from={_lineFrom} to={_lineTo} color={0xff3333} visible={lineVisible} />
   <CurvedArrow center={_arcCenter} from={_arcFrom} to={_arcTo} color={0x33ff33} visible={arcVisible} />

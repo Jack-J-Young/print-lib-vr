@@ -1,14 +1,8 @@
 <script lang="ts">
-  import { T, type CurrentReadable, useTask } from "@threlte/core";
-  import {
-    XR,
-    useController,
-    Headset,
-    type XRController,
-    useXR,
-  } from "@threlte/xr";
+  import { T, useTask } from "@threlte/core";
+  import { XR, Headset } from "@threlte/xr";
   import * as THREE from "three";
-  import Controllers from "$lib/ui/input/Controllers.svelte";
+  import Input from "$lib/ui/input/Input.svelte";
   import Collision from "$lib/ui/interactables/Collision.svelte";
   import Keyboard from "$lib/components/Keyboard.svelte";
   import GithubInput from "$lib/components/GithubInput.svelte";
@@ -17,30 +11,21 @@
   import OriginMarker from "$lib/models/OriginMarker.svelte";
   import { load3MFsFromRepo } from "$lib/services/githubService";
   import { repoStore } from "$lib/stores/repoStore.svelte";
-  import { worldStore } from "$lib/stores/worldStore.svelte";
-
-  const { isHandTracking } = useXR();
+  import { environment } from "$lib/stores/environment.svelte";
 
   let headset: THREE.Object3D = $state(new THREE.Object3D());
   let worldRoot: THREE.Group = $state(new THREE.Group());
 
-  $effect(() => { worldStore.worldRoot = worldRoot; });
-  $effect(() => { worldStore.headset   = headset; });
+  $effect(() => { environment.worldRoot = worldRoot; });
+  $effect(() => { environment.headset   = headset; });
 
+  // Place the world relative to the headset on the first frame, once matrices exist.
   let init = false;
-
   useTask(() => {
-    if (!init) {
-      worldStore.recenter();
-      init = true;
-    }
-    const gamepad = $right?.inputSource?.gamepad;
-    if (!gamepad) return;
-    if (gamepad.buttons[3]?.pressed) worldStore.recenter();
+    if (init) return;
+    environment.recenter();
+    init = true;
   });
-
-  let left: CurrentReadable<XRController | undefined> = $state(useController("left"));
-  let right: CurrentReadable<XRController | undefined> = $state(useController("right"));
 
   let readmeSrc: string | undefined = $state(undefined);
 
@@ -72,7 +57,7 @@
   </Headset>
 
   <T.PerspectiveCamera />
-  <Controllers bind:left bind:right />
+  <Input />
 
   <T.Group bind:ref={worldRoot}>
     <T.AmbientLight color={0xd7681c} intensity={0.3} position={[0, 0, 0]} />
@@ -99,11 +84,7 @@
     <Collision>
       <T.Mesh visible={false}>
         <T.SphereGeometry args={[4, 16, 16]} />
-        <T.MeshBasicMaterial
-          color="clear"
-          transparent
-          side={THREE.DoubleSide}
-        />
+        <T.MeshBasicMaterial transparent side={THREE.DoubleSide} />
       </T.Mesh>
     </Collision>
   </T.Group>
