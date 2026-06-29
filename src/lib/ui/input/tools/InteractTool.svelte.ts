@@ -1,10 +1,11 @@
 import type { Tool, AuxInput } from "./Tool";
+import { TOOL_COLORS } from "./colors";
 import { registry } from "$lib/ui/interactables/stores/registryStore.svelte";
 import type * as THREE from "three";
 
 class InteractTool implements Tool {
   readonly name = "Interact";
-  readonly color = 0x44ff44;
+  readonly color = TOOL_COLORS.interact;
 
   isHovering: boolean = $state(false);
   isActive: boolean = $state(false);
