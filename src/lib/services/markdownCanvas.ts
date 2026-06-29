@@ -1,4 +1,3 @@
-import { makeCanvasTexture, type CanvasTexture } from "$lib/textures/makeCanvasTexture";
 import type { StyledLine } from "$lib/services/markdownLayout";
 
 export const CW = 1024;
@@ -6,10 +5,6 @@ export const CH = 1024;
 export const PAD = 40;
 export const MAX_W = CW - PAD * 2;
 export const USABLE_H = CH - PAD * 2;
-
-export function createMarkdownCanvas(): CanvasTexture {
-  return makeCanvasTexture(CW, CH);
-}
 
 export function paginate(lines: StyledLine[], usableH: number): StyledLine[][] {
   const result: StyledLine[][] = [];
@@ -31,7 +26,6 @@ export function paginate(lines: StyledLine[], usableH: number): StyledLine[][] {
 
 export function renderPage(
   ctx: CanvasRenderingContext2D,
-  texture: { needsUpdate: boolean },
   pageLines: StyledLine[],
   totalPages: number,
   pageIndex: number,
@@ -76,6 +70,4 @@ export function renderPage(
     ctx.textBaseline = "bottom";
     ctx.fillText(`${pageIndex + 1} / ${totalPages}`, CW - PAD - 60, CH - 10);
   }
-
-  texture.needsUpdate = true;
 }
