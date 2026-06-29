@@ -17,41 +17,26 @@
   import OriginMarker from "$lib/models/OriginMarker.svelte";
   import { load3MFsFromRepo } from "$lib/services/githubService";
   import { repoStore } from "$lib/stores/repoStore.svelte";
+  import { worldStore } from "$lib/stores/worldStore.svelte";
 
   const { isHandTracking } = useXR();
 
   let headset: THREE.Object3D = $state(new THREE.Object3D());
   let worldRoot: THREE.Group = $state(new THREE.Group());
 
-  function recenter(head: THREE.Object3D) {
-    if (!worldRoot) return;
-
-    const pos = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-
-    head.matrixWorld.decompose(pos, quat, scale);
-
-    quat.z = 0;
-
-    worldRoot.position.copy(pos);
-    worldRoot.quaternion.copy(quat);
-    worldRoot.scale.copy(scale);
-  }
+  $effect(() => { worldStore.worldRoot = worldRoot; });
+  $effect(() => { worldStore.headset   = headset; });
 
   let init = false;
 
   useTask(() => {
     if (!init) {
-      recenter(headset);
+      worldStore.recenter();
       init = true;
     }
     const gamepad = $right?.inputSource?.gamepad;
     if (!gamepad) return;
-    const pressed = gamepad.buttons[3]?.pressed;
-    if (pressed && worldRoot && headset) {
-      recenter(headset);
-    }
+    if (gamepad.buttons[3]?.pressed) worldStore.recenter();
   });
 
   let left: CurrentReadable<XRController | undefined> = $state(useController("left"));

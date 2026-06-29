@@ -37,7 +37,7 @@
     if ($isHandTracking) {
       const hand = $rightHand;
       if (!hand) return;
-      hand.targetRay.matrixWorldNeedsUpdate = true;
+      hand.targetRay.updateWorldMatrix(true, false);
       const m = hand.targetRay.matrixWorld;
       _rot.extractRotation(m);
       _origin.setFromMatrixPosition(m);
@@ -52,7 +52,7 @@
 
       const grip = $right.grip;
       if (!grip) return;
-      grip.matrixWorldNeedsUpdate = true;
+      grip.updateWorldMatrix(true, false);
       const m = grip.matrixWorld;
       _rot.extractRotation(m);
       _origin.setFromMatrixPosition(m);

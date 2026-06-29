@@ -4,6 +4,7 @@
   import { T, useTask, useThrelte } from "@threlte/core";
   import { Hand, useHand, useHandJoint, useXR } from "@threlte/xr";
   import { toolStore } from "$lib/ui/input/stores/toolStore.svelte";
+  import { worldStore } from "$lib/stores/worldStore.svelte";
   import type { RaycastEngine } from "$lib/ui/input/RaycastEngine.svelte";
   import type { AuxInput } from "$lib/ui/input/tools/Tool";
   import * as THREE from "three";
@@ -21,82 +22,93 @@
   const { isHandTracking } = useXR();
   const { camera } = useThrelte();
 
-  // Hand models for recoloring.
-  const leftHandStore  = useHand('left');
   const rightHandStore = useHand('right');
 
-  // XRJointSpace objects updated by Three.js WebXR manager each frame.
-  const leftWristJoint       = useHandJoint('left',  'wrist');
-  const leftIndexTipJoint    = useHandJoint('left',  'index-finger-tip');
-  const leftThumbTipJoint    = useHandJoint('left',  'thumb-tip');
-  const rightWristJoint      = useHandJoint('right', 'wrist');
-  const rightIndexTipJoint   = useHandJoint('right', 'index-finger-tip');
+  const leftWristJoint     = useHandJoint('left',  'wrist');
+  const leftIndexTipJoint  = useHandJoint('left',  'index-finger-tip');
+  const leftThumbTipJoint  = useHandJoint('left',  'thumb-tip');
+  const leftPinkyTipJoint  = useHandJoint('left',  'pinky-finger-tip');
+  const rightWristJoint    = useHandJoint('right', 'wrist');
 
-  function recolorModel(model: THREE.Object3D | null | undefined, color: THREE.Color) {
-    if (!model) return;
-    model.traverse(obj => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      if (!obj.userData.handTinted) {
-        obj.material = Array.isArray(obj.material)
-          ? obj.material.map((m: THREE.Material) => m.clone())
-          : (obj.material as THREE.Material).clone();
-        obj.userData.handTinted = true;
-      }
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach(m => { if ('color' in m) (m as THREE.MeshStandardMaterial).color.set(color); });
-    });
-  }
+  const MAX_SWITCH_RADIUS = 0.025;
+  const PALM_ORB_RADIUS   = MAX_SWITCH_RADIUS * 2 / 6;
+  const PINCH_MAX_DIST    = 0.07;
 
-  $effect(() => {
-    const color = new THREE.Color(toolStore.color);
-    recolorModel(leftHandStore.current?.model, color);
-    recolorModel(rightHandStore.current?.model, color);
-  });
+  let palmOrbRef: THREE.Mesh | undefined;
+  let palmOrbVisible   = $state(false);
+  let _palmOrbPinched  = false; // debounce: recenter fires once per pinch
+  const _pinkyTipPos   = new THREE.Vector3();
+  const SWITCH_PHASE_DUR  = 0.09; // seconds per shrink/grow phase
 
-  let leftPinching     = $state(false);
+  // Refs for per-frame position/scale updates — avoids reactive overhead.
+  let switchBackRef:  THREE.Mesh | undefined;
+  let switchFrontRef: THREE.Mesh | undefined;
+
+  let switchBackVisible  = $state(false);
+  let switchFrontVisible = $state(false);
+  let switchBackColor    = $state(toolStore.nextColor);
+  let switchFrontColor   = $state(toolStore.color);
+
+  // Non-reactive animation state.
+  let _switchPhase       = 0;   // 0=idle, 1=shrinking, 2=growing
+  let _switchProgress    = 0;   // 0..1 within current phase
+  let _shrinkStartFactor = 1;   // pinchFactor captured at pinch start
+  let _lastPinchFactor   = 1;   // updated each idle frame so pinchstart can read it
+  let _waitForUnpinch    = false; // hold front at full size until fingers open after animation
+
+  // Ray color fade.
+  const RAY_FADE_DUR    = 0.15;
+  let rayColor          = $state(toolStore.color);
+  let _rayFadeActive    = false;
+  let _rayFadeProgress  = 0;
+  const _rayFromColor   = new THREE.Color();
+  const _rayToColor     = new THREE.Color();
+  const _rayLerpColor   = new THREE.Color();
+
+  let leftPinching    = $state(false);
   let prevBothPinching = false;
 
-  // Origin marker — position + orientation frozen at pinch start
   let showOrigin = $state(false);
   let originX = $state(0), originY = $state(0), originZ = $state(0);
   let originQx = $state(0), originQy = $state(0), originQz = $state(0), originQw = $state(1);
   const _originQuat = new THREE.Quaternion();
 
-  const PALM_CAM_DOT = 0.15;
+  const PALM_CAM_DOT = 0.85;
+  const GRAD_SPEED   = 6.0;
+  let _tipAmount = 0;
 
-  // Kept for origin marker Z axis and no-targetRay fallback
+  const _indexTipPos  = new THREE.Vector3();
+  const _thumbTipPos2 = new THREE.Vector3();
+  const _midpoint     = new THREE.Vector3();
+
+  // Right-hand ray frame joystick state
+  const _pinchDisp = new THREE.Vector3();
+  const _perpAxisY = new THREE.Vector3();
+  let _axialPrev   = 0;
+  let _prevPerpXR  = 0;
+  let _prevPerpYR  = 0;
+
+  const _wristPos = new THREE.Vector3();
+  const _rightPos = new THREE.Vector3();
+  const _toLeft   = new THREE.Vector3();
+
+  const _axisX   = new THREE.Vector3();
+  const _axisY   = new THREE.Vector3();
+  const _axisZ   = new THREE.Vector3();
+  const _rotMat  = new THREE.Matrix4();
+
+  const _frozenOrigin = new THREE.Vector3();
+  const _rayOrigin    = new THREE.Vector3();
+  const _perpDirLocal = new THREE.Vector3();
+  const _perpDir      = new THREE.Vector3();
+  const _invRot       = new THREE.Matrix4();
+  const _pinchPoint   = new THREE.Vector3();
+  const _thumbTipPos  = new THREE.Vector3();
+
+  // Kept for no-targetRay fallback
   const _auxAxisDir   = new THREE.Vector3();
   const _auxPerpCross = new THREE.Vector3();
 
-  // Right-hand ray frame joystick state
-  const _pinchDisp  = new THREE.Vector3(); // reusable temp
-  const _perpAxisY  = new THREE.Vector3(); // axisX × perpDir each frame
-  let   _axialPrev  = 0;    // previous frame axial projection for moveDelta
-  let   _prevPerpXR = 0;    // previous frame perp coords for rotDelta
-  let   _prevPerpYR = 0;
-
-  const _wristPos   = new THREE.Vector3();
-  const _rightPos   = new THREE.Vector3();
-  const _toLeft     = new THREE.Vector3();
-
-  // Origin marker axis computation
-  const _axisX         = new THREE.Vector3();
-  const _axisY         = new THREE.Vector3();
-  const _axisZ         = new THREE.Vector3();
-  const _rotMat        = new THREE.Matrix4();
-
-  // Frozen reference frame passed to PinchJoystickOverlay
-  const _frozenOrigin  = new THREE.Vector3();
-  // Live right-hand targetRay origin — updated every frame, passed by reference
-  const _rayOrigin     = new THREE.Vector3();
-  // perpDir in right hand's local frame (frozen at pinch start, re-rotated each frame)
-  const _perpDirLocal  = new THREE.Vector3();
-  const _perpDir       = new THREE.Vector3(); // world-space, updated each frame
-  const _invRot        = new THREE.Matrix4(); // scratch for inverse rotation
-  const _pinchPoint    = new THREE.Vector3();
-  const _thumbTipPos   = new THREE.Vector3();
-
-  // Palm-facing check
   const _palmNormal = new THREE.Vector3();
   const _palmRotMat = new THREE.Matrix4();
   const _camPos     = new THREE.Vector3();
@@ -126,7 +138,7 @@
     return _palmNormal.dot(_toCam) > PALM_CAM_DOT;
   }
 
-  useTask(() => {
+  useTask((delta) => {
     if (!$isHandTracking) return;
 
     const wrist = leftWristJoint.current;
@@ -134,59 +146,159 @@
     wrist.updateWorldMatrix(true, false);
     wrist.getWorldPosition(_wristPos);
 
-    const rightWrist  = rightWristJoint.current;
+    // Ray color fade.
+    if (_rayFadeActive) {
+      _rayFadeProgress = Math.min(1, _rayFadeProgress + delta / RAY_FADE_DUR);
+      _rayLerpColor.lerpColors(_rayFromColor, _rayToColor, _rayFadeProgress);
+      rayColor = _rayLerpColor.getHex();
+      if (_rayFadeProgress >= 1) {
+        _rayFadeActive = false;
+        rayColor = _rayToColor.getHex();
+      }
+    } else {
+      rayColor = toolStore.color;
+    }
+
+    // Hold _tipAmount at 1 during the switch animation so spheres don't fade.
+    if (_switchPhase !== 0) {
+      _tipAmount = 1;
+    } else {
+      const palmNowFacing = isLeftPalmFacingCamera();
+      _tipAmount += ((palmNowFacing ? 1 : 0) - _tipAmount) * Math.min(1, GRAD_SPEED * delta);
+    }
+
+    const indexTipJ = leftIndexTipJoint.current;
+    const thumbTipJ = leftThumbTipJoint.current;
+    if (indexTipJ && thumbTipJ && _tipAmount > 0.001) {
+      indexTipJ.updateWorldMatrix(true, false);
+      thumbTipJ.updateWorldMatrix(true, false);
+      indexTipJ.getWorldPosition(_indexTipPos);
+      thumbTipJ.getWorldPosition(_thumbTipPos2);
+      _midpoint.addVectors(_indexTipPos, _thumbTipPos2).multiplyScalar(0.5);
+      if (switchBackRef)  switchBackRef.position.copy(_midpoint);
+      if (switchFrontRef) switchFrontRef.position.copy(_midpoint);
+      switchBackRef?.scale.setScalar(MAX_SWITCH_RADIUS * _tipAmount);
+
+      const pinchDist   = _indexTipPos.distanceTo(_thumbTipPos2);
+      const pinchFactor = Math.min(pinchDist / PINCH_MAX_DIST, 1);
+
+      if (_switchPhase === 0) {
+        // Idle: front follows finger distance (or holds full until unpinched after animation).
+        if (_waitForUnpinch) {
+          if (pinchFactor > 0.9) _waitForUnpinch = false;
+          switchFrontRef?.scale.setScalar(MAX_SWITCH_RADIUS * _tipAmount);
+        } else {
+          _lastPinchFactor = pinchFactor;
+          switchFrontRef?.scale.setScalar(MAX_SWITCH_RADIUS * _tipAmount * pinchFactor);
+        }
+        switchBackColor    = toolStore.nextColor;
+        switchFrontColor   = toolStore.color;
+        switchBackVisible  = true;
+        switchFrontVisible = true;
+      } else if (_switchPhase === 1) {
+        // Shrinking: animate from captured start factor down to 0, visible.
+        _switchProgress = Math.min(1, _switchProgress + delta / SWITCH_PHASE_DUR);
+        switchFrontRef?.scale.setScalar(MAX_SWITCH_RADIUS * _tipAmount * _shrinkStartFactor * (1 - _switchProgress));
+        switchBackVisible  = true;
+        switchFrontVisible = true;
+        if (_switchProgress >= 1) {
+          _rayFromColor.set(toolStore.color);
+          toolStore.cycleNext();
+          _rayToColor.set(toolStore.color);
+          _rayFadeActive   = true;
+          _rayFadeProgress = 0;
+          switchFrontColor   = toolStore.color;
+          switchFrontVisible = false;
+          _switchPhase    = 2;
+          _switchProgress = 0;
+        }
+      } else {
+        // Growing: front animates from 0 to full size, invisible until done.
+        _switchProgress = Math.min(1, _switchProgress + delta / SWITCH_PHASE_DUR);
+        switchFrontRef?.scale.setScalar(MAX_SWITCH_RADIUS * _tipAmount * _switchProgress);
+        switchBackVisible  = true;
+        switchFrontVisible = false;
+        if (_switchProgress >= 1) {
+          switchFrontVisible = true;
+          switchBackColor    = toolStore.nextColor;
+          _switchPhase       = 0;
+          _switchProgress    = 0;
+          _waitForUnpinch    = true;
+        }
+      }
+    } else {
+      switchBackVisible  = false;
+      switchFrontVisible = false;
+    }
+
+    // Palm orb: between thumb and pinky, always visible when joints available.
+    const thumbJ  = leftThumbTipJoint.current;
+    const pinkyJ  = leftPinkyTipJoint.current;
+    if (thumbJ && pinkyJ && palmOrbRef && _tipAmount > 0.001) {
+      thumbJ.updateWorldMatrix(true, false);
+      pinkyJ.updateWorldMatrix(true, false);
+      thumbJ.getWorldPosition(_thumbTipPos2);
+      pinkyJ.getWorldPosition(_pinkyTipPos);
+      palmOrbRef.position.addVectors(_thumbTipPos2, _pinkyTipPos).multiplyScalar(0.5);
+      const pinkyPinchFactor = Math.min(_thumbTipPos2.distanceTo(_pinkyTipPos) / PINCH_MAX_DIST, 1);
+      palmOrbRef.scale.setScalar(PALM_ORB_RADIUS * pinkyPinchFactor * _tipAmount);
+      if (pinkyPinchFactor < 0.08 && !_palmOrbPinched) {
+        _palmOrbPinched = true;
+        worldStore.recenter();
+      } else if (pinkyPinchFactor > 0.5) {
+        _palmOrbPinched = false;
+      }
+      palmOrbVisible = true;
+    } else {
+      palmOrbVisible = false;
+    }
+
+    // Joystick: both pinches active.
+    const rightWrist   = rightWristJoint.current;
     const bothPinching = leftPinching;
 
     if (bothPinching && rightWrist) {
       rightWrist.updateWorldMatrix(true, false);
       rightWrist.getWorldPosition(_rightPos);
-
       _toLeft.subVectors(_wristPos, _rightPos);
       const len = _toLeft.length();
 
       if (len > 0.001) {
         const arrowDir = _toLeft.clone().divideScalar(len);
 
-        // Get right hand targetRay every frame (needed for both init and live axis).
         const rightHand = rightHandStore.current;
         const rightRay  = rightHand?.targetRay;
         if (rightRay) {
           rightRay.updateWorldMatrix(true, false);
           _rotMat.extractRotation(rightRay.matrixWorld);
-          _axisX.set(0, 0, -1).applyMatrix4(_rotMat);                // pointer direction
-          _rayOrigin.setFromMatrixPosition(rightRay.matrixWorld);     // pointer origin
-          _perpDir.copy(_perpDirLocal).applyMatrix4(_rotMat);         // rotate frozen offset with hand
+          _axisX.set(0, 0, -1).applyMatrix4(_rotMat);
+          _rayOrigin.setFromMatrixPosition(rightRay.matrixWorld);
+          _perpDir.copy(_perpDirLocal).applyMatrix4(_rotMat);
         } else {
           _axisX.copy(_auxPerpCross);
           rightWrist.getWorldPosition(_rayOrigin);
-          // _perpDir unchanged when no targetRay
         }
 
         if (!prevBothPinching) {
-          // 1. Freeze Z axis (right→left wrist) for origin marker orientation.
           _auxAxisDir.copy(arrowDir);
           _axisZ.copy(_auxAxisDir);
 
-          // 2. Freeze the perpendicular direction from the right ray to the initial pinch.
           const pinchKnown = getLeftPinchPoint(_pinchPoint);
           const pinchPos   = pinchKnown ? _pinchPoint : _wristPos;
           _frozenOrigin.copy(pinchPos);
-          // perpDir = normalize( (pinchPos - rayOrigin) projected perp to axisX )
+
           _perpDir.subVectors(pinchPos, _rayOrigin);
           _perpDir.addScaledVector(_axisX, -_perpDir.dot(_axisX));
           const perpLen = _perpDir.length();
           if (perpLen > 0.001) {
             _perpDir.divideScalar(perpLen);
           } else {
-            // Pinch is on the ray — pick an arbitrary perpendicular
             _perpDir.set(Math.abs(_axisX.x) < 0.9 ? 1 : 0, Math.abs(_axisX.x) >= 0.9 ? 1 : 0, 0);
             _perpDir.addScaledVector(_axisX, -_perpDir.dot(_axisX)).normalize();
           }
-          // Store perpDir in the right hand's local frame so it rotates with the hand.
           _invRot.copy(_rotMat).transpose();
           _perpDirLocal.copy(_perpDir).applyMatrix4(_invRot);
 
-          // 3. Initialize ray-frame joystick reference values.
           _pinchDisp.subVectors(pinchPos, _rayOrigin);
           _axialPrev = _pinchDisp.dot(_axisX);
           _pinchDisp.addScaledVector(_axisX, -_axialPrev);
@@ -198,21 +310,18 @@
         }
 
         _axisY.crossVectors(_axisZ, _axisX).normalize();
-
-        // Update OriginMarker orientation each frame (180° around X: negate Y and Z)
         _originQuat.setFromRotationMatrix(
           new THREE.Matrix4().makeBasis(_axisX, _axisY.negate(), _axisZ.negate())
         );
         originX = _frozenOrigin.x; originY = _frozenOrigin.y; originZ = _frozenOrigin.z;
-        originQx = _originQuat.x; originQy = _originQuat.y;
-        originQz = _originQuat.z; originQw = _originQuat.w;
+        originQx = _originQuat.x;  originQy = _originQuat.y;
+        originQz = _originQuat.z;  originQw = _originQuat.w;
 
-        // Joystick: decompose current left pinch into ray-frame cylindrical coords.
         const pinchKnownLive = getLeftPinchPoint(_pinchPoint);
         if (pinchKnownLive) {
           _pinchDisp.subVectors(_pinchPoint, _rayOrigin);
           const axialCurrent = _pinchDisp.dot(_axisX);
-          _pinchDisp.addScaledVector(_axisX, -axialCurrent); // pure perp component
+          _pinchDisp.addScaledVector(_axisX, -axialCurrent);
           _perpAxisY.crossVectors(_axisX, _perpDir);
           const perpXR  = _pinchDisp.dot(_perpDir);
           const perpYR  = _pinchDisp.dot(_perpAxisY);
@@ -229,7 +338,7 @@
         }
       }
     } else {
-      handAux = { x: 0, y: 0 };
+      handAux    = { x: 0, y: 0 };
       showOrigin = false;
     }
 
@@ -239,10 +348,28 @@
 
 {#if $isHandTracking}
 
+<!-- Mode-switch spheres: always in scene so refs are stable; visibility toggled via prop. -->
+<T.Mesh bind:ref={palmOrbRef} visible={palmOrbVisible}>
+  <T.SphereGeometry args={[1, 12, 8]} />
+  <T.MeshBasicMaterial color={0xffffff}/>
+</T.Mesh>
+
+<T.Mesh bind:ref={switchBackRef} visible={switchBackVisible} renderOrder={-2}>
+  <T.SphereGeometry args={[1, 16, 12]} />
+  <T.MeshBasicMaterial color={switchBackColor} />
+</T.Mesh>
+<T.Mesh bind:ref={switchFrontRef} visible={switchFrontVisible}>
+  <T.SphereGeometry args={[1, 16, 12]} />
+  <T.MeshBasicMaterial color={switchFrontColor}/>
+</T.Mesh>
+
 <Hand left
   onpinchstart={() => {
     if (isLeftPalmFacingCamera()) {
-      toolStore.cycleNext();
+      _shrinkStartFactor = _lastPinchFactor;
+      _switchPhase       = 1;
+      _switchProgress    = 0;
+      _waitForUnpinch    = false;
     } else {
       leftPinching = true;
     }
@@ -252,7 +379,7 @@
   {#snippet targetRay()}
     <T.Group rotation={[Math.PI / 2, 0, 0]}>
       <Pointer
-        color={toolStore.color}
+        color={rayColor}
         radius={leftPinching ? 0.01 : 0.005}
         length={leftPinching ? 0.25 : 1}
       />
@@ -264,24 +391,16 @@
   onpinchstart={() => { handIsPressed = true; }}
   onpinchend={()  => { handIsPressed = false; }}
 >
-  {#snippet wrist()}
-    <T.Mesh>
-      <T.SphereGeometry args={[0.015, 8, 8]} />
-      <T.MeshBasicMaterial color={toolStore.color} />
-    </T.Mesh>
-  {/snippet}
   {#snippet targetRay()}
     <T.Group rotation={[Math.PI / 2, 0, 0]}>
       <Pointer
-        color={toolStore.color}
+        color={rayColor}
         radius={handIsPressed ? 0.01 : 0.005}
         length={handIsPressed ? 0.25 : 1}
       />
-      
     </T.Group>
   {/snippet}
 </Hand>
-
 
 {#if handIsPressed && leftPinching}
   <PinchJoystickOverlay
@@ -294,4 +413,5 @@
     {originQx} {originQy} {originQz} {originQw}
   />
 {/if}
+
 {/if}

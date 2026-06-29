@@ -14,6 +14,10 @@ class ToolStore {
     return this.tools[this.index].color;
   }
 
+  get nextColor(): number {
+    return this.tools[(this.index + 1) % this.tools.length].color;
+  }
+
   cycleNext(): void {
     this.index = (this.index + 1) % this.tools.length;
   }

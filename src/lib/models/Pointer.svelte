@@ -11,5 +11,5 @@
 
 <T.Mesh position={[0, -length / 2, 0]}>
   <T.CylinderGeometry args={[radius, 0.0, length, segments]} />
-  <T.MeshStandardMaterial {color}/>
+  <T.MeshStandardMaterial {color} emissive={color} />
 </T.Mesh>
