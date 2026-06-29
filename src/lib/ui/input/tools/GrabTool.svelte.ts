@@ -24,6 +24,7 @@ class GrabTool implements Tool {
   update(
     delta: number,
     hitId: number | undefined,
+    _hitPoint: THREE.Vector3 | undefined,
     isPressed: boolean,
     matrix: THREE.Matrix4,
     rayDir: THREE.Vector3,

@@ -17,6 +17,7 @@ class InteractTool implements Tool {
   update(
     delta: number,
     hitId: number | undefined,
+    hitPoint: THREE.Vector3 | undefined,
     isPressed: boolean,
     matrix: THREE.Matrix4,
     rayDir: THREE.Vector3,
@@ -37,9 +38,14 @@ class InteractTool implements Tool {
       this.isHovering = interactableHit !== undefined;
     }
 
+    // Continuous hover — lets panels resolve which region the ray is over.
+    if (interactableHit !== undefined && hitPoint) {
+      registry.interactableMap.get(interactableHit)?.onHover?.(hitPoint);
+    }
+
     // Press on leading edge
     if (isPressed && !this.wasPressed && interactableHit !== undefined) {
-      registry.interactableMap.get(interactableHit)?.onPress?.();
+      registry.interactableMap.get(interactableHit)?.onPress?.(hitPoint);
       this.pressedId = interactableHit;
     }
 

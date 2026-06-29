@@ -30,10 +30,11 @@ export class ControllerInputController extends InputController {
     if (!grip || !gamepad) return;
 
     const hitId = this.castFrom(grip, DOWN_NEG_Y);
+    const hitPoint = this.engine.hitPoint;
     const { aux, triggerPressed, gripPressed } = readGamepad(gamepad);
 
-    interactTool.update(delta, hitId, triggerPressed, grip.matrixWorld, this.ray.dir, aux, this.scene);
-    grabTool.update(delta, hitId, gripPressed, grip.matrixWorld, this.ray.dir, aux, this.scene);
+    interactTool.update(delta, hitId, hitPoint, triggerPressed, grip.matrixWorld, this.ray.dir, aux, this.scene);
+    grabTool.update(delta, hitId, hitPoint, gripPressed, grip.matrixWorld, this.ray.dir, aux, this.scene);
 
     if (gamepad.buttons[RECENTER_BUTTON]?.pressed) environment.recenter();
   }

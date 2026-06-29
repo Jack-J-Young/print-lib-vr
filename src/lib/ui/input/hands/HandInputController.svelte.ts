@@ -89,7 +89,7 @@ export class HandInputController extends InputController {
     if (rightRay) {
       const hitId = this.castFrom(rightRay, FORWARD_NEG_Z);
       toolStore.activeTool.update(
-        delta, hitId, this.handIsPressed,
+        delta, hitId, this.engine.hitPoint, this.handIsPressed,
         rightRay.matrixWorld, this.ray.dir, this.joystick.aux, this.scene,
       );
     }

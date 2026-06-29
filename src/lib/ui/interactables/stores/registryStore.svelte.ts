@@ -1,7 +1,10 @@
+import type * as THREE from "three";
+
 export interface Interactable {
-  onPress?: () => void;
+  onPress?: (point?: THREE.Vector3) => void;
   onRelease?: () => void;
   onHoverStart?: () => void;
+  onHover?: (point: THREE.Vector3) => void; // continuous, each frame while hovered
   onHoverEnd?: () => void;
 }
 

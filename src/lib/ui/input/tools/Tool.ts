@@ -13,6 +13,7 @@ export interface Tool {
   update(
     delta: number,
     hitId: number | undefined,
+    hitPoint: THREE.Vector3 | undefined,
     isPressed: boolean,
     matrix: THREE.Matrix4,
     rayDir: THREE.Vector3,
